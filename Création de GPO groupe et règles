@@ -1,0 +1,81 @@
+<# Création de GPO groupe et règles #> 
+
+
+
+#importation du module AD
+Import-Module ActiveDirectory
+
+#importattion du fichier CSV
+$CVSFile = "C:\data_tp3.csv"
+$dataCSV = Import-CSV -Path $CVSFile -Delimiter "," -Encoding UTF8
+
+#Définir UPN 
+$UPN = "konexio.lan"
+
+#Boucle ForEach pour parcourir le fichier CSV
+
+Try{
+
+    Foreach ($User in $dataCSV){
+        
+ #Suppression des utilisateurs 
+    
+        $UserPrenom = $User.PRENOM
+        $UserNom = $User.NOM
+        $UserLogin = $UserNom.ToLower() + "." +$UserPrenom.ToLower()
+        $UserMail = "$UserLogin@konexio.lan"
+        $UserPassword = "Password_KONEXIO_2024"
+        $UserPays = $User.PAYS
+        $UserVille = $User.VILLE
+        $UserRue = $User.RUE
+        $UserService = $User.SERVICE
+        $DN = "OU=$UserService, DC=konexio, DC=lan"
+            
+    
+        Write-Host = "la commande s'est exécutée sans problème"
+        Write-Output "$UserPrenom $UserNom $UserLogin $UserMail $UserService $UserPassword" 
+    
+            #Ajout des Unités d'organistaion 
+
+            if(Get-ADOrganizationalUnit -Filter {Name -eq $UserService})
+              {  
+                Write-Warning "L'OU existe déjà"
+              }
+            else
+                {
+                 New-ADOrganizationalUnit -Name $UserService -Path "DC=konexio,DC=lan"
+                }
+            
+            
+            #Ajout des utilisateur 
+            if(Get-ADUser -Filter {SamAccountName -eq $UserLogin})
+            {
+                Write-Warning "L'utilisateur $UserLogin existe déjà"
+            } 
+                       
+            else{
+                # -Remove-ADUser
+                #Remove-ADUser -Identity "$UserNom $UserPrenom"  
+         
+                 New-ADUser -Name "$UserPrenom $UserNom"`
+                            -DisplayName "$UserPrenom $UserNom"`
+                            -GivenName "$UserPrenom"`
+                            -Surname "$UserNom"`
+                            -SamAccountName "$UserLogin"`
+                            -UserPrincipalName "$UserMail"`
+                            -EmailAddress "$UserMail"`
+                            -Path "$DN"`
+                            -AccountPassword(ConvertTo-secureString $UserPassword -AsPlainText -Force)`
+                            <#Ajouter un espace après $true sinon message d'erreur => = Une erreur est survenue : Impossible de convertir « System.String » en type « System.Nullable`1[System.Boolean] », requis par le paramètre « Change PasswordAtLogon ». #>`
+                            -ChangePasswordAtLogon $True `
+                            -Enable $True
+                }
+       } }
+
+Catch{
+            Write-Host = "Une erreur est survenue : $_" -ForegroundColor Red
+}
+
+
+
+
