@@ -1,0 +1,49 @@
+<#
+Description : Script intéractif de création d'utilisateur dans l'Active Directory
+Usage : createUser.ps1
+        ATTENTION : Pour les prénoms / noms composés, bien mettre un trait d'union
+Auteur : Stiven G.
+Version 0.1
+#>
+
+$nom = Read-Host "Entrez le prénom et le nom de l'utilisateur à ajouter"
+$groupe = Read-Host "Entrer le groupe du nouvel utilisateur"
+$dossierDestination = "C:\Users\sevbo\Desktop\powershell_test"
+
+# Génération du login 
+$initialePrenom = $nom.Substring(0,1) # on récupère la première lettre du prénom
+$nomFAmille = $nom.Split(" ")[1] # on récupère le nom de famille 
+$loginGenere=$initialePrenom+"."+$nomFamille
+$loginGenere=$loginGenere.ToLower() # on met le tout en minuscule
+
+$motDePasse = "Password1!"
+
+# Ajout de l'utilisateur
+Try {
+    New-ADUser -Name $nom `
+               -SamAccountName $loginGenere `
+               -UserPrincipalName $loginGenere@etcomment.fr `
+               -AccountPassword (ConvertTo-SecureString -AsPlainText $motDePasse -Force)`
+               -Enabled $true
+               Write-Host "L'utilisateur $nom a été ajouté dans l'AD"
+    }
+Catch {
+    Write-Host "Une erreur est apparue à la création de l'utilisateur $nom : $_"
+    }
+
+# Ajout de l'utilisateur dans le groupe
+Try {
+    Add-ADGroupMember -Identity $groupe -Members $loginGenere
+    Write_Host "Lutilisateur $nom a été ajouté dans le groupe $groupe"
+    }
+Catch{
+    Write-Host "Une erreur est survenue à l'ajout de l'utilisateur $nom dans le groupe : $_"
+    }
+# Export CSV
+Try{
+    Get-ADGroupMember $groupe | Export-Csv $dossierDestination "exportCSV.csv" -Encoding UTF8
+    Write-Host "Export s'est terminé correctement"
+    }
+Catch{
+    Write-Host "Une erreur est survenue à l'export : $_"
+    }
