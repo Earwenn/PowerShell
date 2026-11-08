@@ -1,0 +1,122 @@
+<#Description 
+Script permettant la création des serveurss Active Directory, DNS et DHCP 
+l'ajout d'un user et d'un PC dans l'AD
+
+Usage : cours et révisions
+Auteur : Séverine Boelle
+Version 1.0
+Date 02/06/2024#>
+
+
+
+#Renommer la machine et redemarrer
+Rename-Computer -NewName 'SRVAD02'
+Restart-Computer
+
+#Tester le nom du PC
+Hostname
+
+#Configurer l'adresse IPv4 fixe "
+New-NetIPAddress -InterfaceIndex 7 -IPAddress 192.168.0.20 -PrefixLength 24 -DefaultGateway 192.168.0.254
+
+#Connaitre la configuration existante 
+Get-NetIpInterface
+Get-NetAdapter
+Gip
+
+#Installation du rôle ADDS
+Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools -IncludeAllSubFeature
+#Normalement l'étape d'après c'est de promouvoir le serveur en controleur de domaine
+
+# Installation du rôle DNS
+Install-WindowsFeature -Name DNS -IncludeManagementTools -IncludeAllSubFeature
+
+# Installation du rôle DHCP
+Install-WindowsFeature -Name DHCP -IncludeManagementTools -IncludeAllSubFeature
+
+# Installation des outils RSAT (Remote Server Administration Tools) et activation les fonctionnalité "module Active Directory pour powershell
+try{ 
+    Install-WindowsFeature -Name RSAT-AD-Tools -IncludeManagementTools -IncludeAllSubFeature
+    #Enable-WindowsOptionalFeature -Online -FeatureName RSATClient-Roles-AD-Powershell commande marche pas
+    Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" # depuis version WIndows 10
+    Write-Host "L'outil c'est bien installé"
+    Write-Warning "L'outil est déjà installé"
+    }
+Catch {Write-Host " une rerreur est survenue : $_"}
+
+#Configuration du DHCP
+#Ajouter groupe de sécurité et redémarrer le service
+Add-DhcpServerSecurityGroup
+netsh dhcp add securitygroups
+
+Restart-Service dhcpServer
+# dhcp doit disposer d'autorisations ontrôle total pour les paramètres de registre DHCP 
+# https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/ee941157(v=ws.10)?redirectedfrom=MSDN
+
+# Ajouter une étendue 
+Add-DhcpServerv4Scope -Name "konexioNetwork" -StartRange 192.168.0.50 -EndRange 192.168.0.150 -SubnetMask 255.255.255.0 -Description "plage pour le SM22-TP3"
+
+
+#Erreur	DHCP : l’option de domaine DNS doit être configurée en tant qu’option d’étendue ou de serveur pour DHCPv4.	Configuration
+
+#https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/ee941136(v=ws.10)?redirectedfrom=MSDN
+
+#SRVAD02	Erreur	DHCP : l’option de serveur DNS doit être configurée pour toutes les étendues IPv4.	Configuration
+# https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/ee941180(v=ws.10)?redirectedfrom=MSDN#additional-references
+#https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/ee941211(v=ws.10)?redirectedfrom=MSDN
+Set-DhcpServerv4OptionValue -DnsServer 127.0.0.1 -DnsDomain "konexio.lan" -ComputerName "SRVAD02" -Router 192.168.0.254 -PassThru -Verbose -Force
+
+#Création de la fôret konexio.lan
+$DelegationDNS= $false
+
+$DomainNameDNS = "konexio.lan"
+$DomainNameNetbios= "KONEXIO"
+$MdpRestauration = ConvertToSecureString -AsplainText "Server-Standard-22" -force
+
+$ForestConfiguration= @{
+'CreateDnsDelegation'=$DelegationDNS;
+'-DatabasePath' = 'C:\Windows\NTDS';
+'-DomainMode'='Default';
+'DomainName'=$DomainNameDNS;
+'-DomainNetBiosName'=$DomainNameNetbios;
+'-ForestMode'='Default';
+'-InstallDns'=$true;
+'-LogPath'='C\Windows\NTDS';
+'-NoRebootOnCompletion'=$false;
+'-SysvolPath'= 'C:\Windows\SYSVOL';
+'-Force'=$true;
+'-CreateDnsDelegation'=$false;
+}
+
+Import-Module ADDSDeployement #marche pasServer
+Install-ADDSForest @ForestConfiguration
+Get-ADForest
+
+# AJouter le serveur DHCP dans l'AD
+Add-DhcpServerInDC -DNSName SRVAD02.konexio.lan 
+
+#Ajouter un utilisateur dans l'AD
+Remove-ADUSer -Identity luke
+New-ADUser -Name "luke" -AccountPassword (ConvertTo-SecureString -AsPlainText "ServerAD-Standard-22" -Force) -Enable $true
+Get-ADUser -Identity "luke"
+Enable-ADAccount "luke"
+
+
+
+#Associer un ordinateur à un domaine 
+$dc= "konexio.lan"
+$PCName = "VMW1001"
+$pwd = "Password123" | ConvertTo-SecureString -AsPlainText -Force
+$usr ="luke"
+$pc = "VMW1001"
+$creds = New-Object System.Management.Automation.PSCredential($usr)
+
+Add-Computer -ComputerName $pc -LocalCredential $pc\Users -DomainName $dc -Credential $creds -Restart -Force
+New-ADComputer -Name $pc -SAMAccountName "luke"
+
+
+<#
+Get-ADOrganizationalUnit -Filter * | Format-Table DistinguishedName
+
+
+#>
