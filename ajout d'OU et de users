@@ -1,0 +1,139 @@
+<#Description 
+Script permettant l'ajout d'OU et de users à l'aide d'un fichier CSV dans l'AD
+
+Usage : cours et révisions
+Auteur : Séverine Boelle
+Version 1.0
+Date 02/06/2024#>
+
+#importation du module AD
+Import-Module ActiveDirectory
+
+#importattion du fichier CSV
+$CVSFile = "C:\data_tp3.csv"
+$dataCSV = Import-CSV -Path $CVSFile -Delimiter "," -Encoding UTF8
+
+
+###############################################################################
+#Définir UPN 
+#$UPN = "konexio.lan"
+
+
+
+<# transformer le nom des pays en deux lettres 
+#Pour avoir le Code en deux lettres des pays => norme ISO 3166
+Foreach ($Pays in $dataCSV){
+    try{
+            $UserPays = $Pays.PAYS
+            $PaysCode = $Pays.PAYSCODE 
+
+        }
+    
+    Catch {Write-Host = "Une erreur est survenue : $_" -ForegroundColor Red}
+}    
+#>      
+##################################################################################
+
+
+
+
+
+# Boucle pour parcourir le fichier CSV et créer les OU et users >>>
+
+Foreach ($User in $dataCSV){
+        
+    #lecture du fichier CSV
+        
+    try{   
+            $UserPrenom = $($User.PRENOM).Substring(0,1)
+            $UserNom = $($User.NOM).Substring(0.5)
+            #$UserNombre = $UserNom.Length
+            $UserLogin = $UserNom.ToLower() + "." + $UserPrenom.Tolower()
+            $UserMail = "$UserLogin@konexio.lan"
+            $UserPassword = "Password_KONEXIO_2024"
+            $UserPays = $User.PAYSCODE
+            $UserPaysNumber = $User.PAYSNUMERO 
+            $UserVille = $User.VILLE
+            $UserRue = $User.RUE
+            $UserService = $User.SERVICE
+            $DN = "OU=$UserService, DC=konexio, DC=lan"
+           
+           #$UserNom.Length
+
+               
+            Write-Host = "la commande s'est exécutée sans problème"
+            Write-Output "$UserPrenom $UserNom $UserLogin $UserMail $UserService $UserPassword" #faire tableau
+        }
+    
+    catch{Write-Host = "Une erreur est survenue : $_" -ForegroundColor Red}
+
+
+    #Ajout des Unités d'organistaion 
+    try{
+        if(Get-ADOrganizationalUnit -Filter {Name -eq $UserService})
+          {  
+           Write-Warning "L'OU existe déjà"
+           }
+         else
+             {
+              New-ADOrganizationalUnit -Name $UserService -Path "DC=konexio,DC=lan"
+              }
+        }
+    catch{Write-Host = "Une erreur est survenue : $_" -ForegroundColor Red}
+
+
+    # Ajout des utilisateurs 
+    
+    try{
+
+        if(Get-ADUser -Filter {SamAccountName -eq $UserLogin})
+            {
+                Write-Warning "L'utilisateur $UserLogin existe déjà"
+            } 
+                       
+        else{
+            New-ADUser  -Company "konexio" `
+                        -Name "$UserPrenom $UserNom"`
+                        -DisplayName "$UserPrenom $UserNom"`
+                        -GivenName $UserPrenom `
+                        -Surname $UserNom `
+                        -SamAccountName $UserLogin `
+                        -UserPrincipalName $UserMail `
+                        -EmailAddress $UserMail `
+                        -Country $UserPays `
+                        -City $UserVille `
+                        -StreetAddress $UserRue `
+                        -Path $DN `
+                        -AccountPassword(ConvertTo-secureString $UserPassword -AsPlainText -Force)`
+                        <#Ajouter un espace après $true sinon message d'erreur => = Une erreur est survenue : Impossible de convertir « System.String » en type « System.Nullable`1[System.Boolean] », requis par le paramètre « Change PasswordAtLogon ». #>`
+                        -ChangePasswordAtLogon $True `
+                        -Enable $True 
+            }
+    } 
+
+    catch{Write-Host "Une erreur est survenue : $_" -ForegroundColor Red}
+
+}
+
+#Get-ADOrganizationalUnit -Filter 'Name -like "*"' | Format-Table Name, DistinguishedName -A | ForEach-Object {Remove-ADOrganizationalUnit -Identity $_.DistinguisedName -Recursive -Confirm:$False}
+
+
+
+<# pour résoudre erreur Une erreur est survenue : Le nom fourni n’est pas un nom de compte formé correctement
+C'est Country qui pose problème
+https://stackoverflow.com/questions/21310355/powershell-new-aduser-attribute-was-not-in-the-acceptable-range
+
+#>
+
+                 # Pour voir les Ou créés 
+                   #Get-ADOrganizationalUnit -Filter *
+  # -Remove-ADUser
+  #Remove-ADUser -Identity "$UserNom $UserPrenom"  
+
+  <# erreurs rencontrées 
+    Le serveur ne souhaite pas traiter la requête => pb Distingued Name et Path 
+
+    Récupérer le nom des pays Get-ADUSer -Filter * -Properties State| Format-Table State
+
+
+    #>
